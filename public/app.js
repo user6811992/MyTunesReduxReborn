@@ -273,8 +273,34 @@ async function deleteProfile() {
   log('Deleted profile');
 }
 
+async function scanNetwork() {
+  const btn = $('btnScanNetwork');
+  btn.disabled = true;
+  btn.textContent = 'Scanning…';
+  const res = await api('/api/scan', { method: 'POST', body: {} });
+  btn.disabled = false;
+  btn.textContent = 'Scan network';
+  const ul = $('scanResults');
+  ul.innerHTML = '';
+  if (!res.results || !res.results.length) {
+    const li = document.createElement('li');
+    li.textContent = 'No DAAP services found on local subnets';
+    ul.appendChild(li);
+    log('Network scan complete: no open port 3689 hosts');
+    return;
+  }
+  res.results.forEach((r) => {
+    const li = document.createElement('li');
+    li.textContent = `${r.ip}:${r.port}`;
+    li.onclick = () => { $('hostInput').value = r.ip; $('portInput').value = r.port; };
+    ul.appendChild(li);
+  });
+  log(`Network scan complete: ${res.results.length} host(s) found`);
+}
+
 // events
 $('btnRefreshDiscover').addEventListener('click', refreshDiscover);
+$('btnScanNetwork').addEventListener('click', scanNetwork);
 $('discoveredSelect').addEventListener('change', applyDiscovered);
 $('btnConnect').addEventListener('click', connect);
 $('btnSaveSettings').addEventListener('click', async () => {

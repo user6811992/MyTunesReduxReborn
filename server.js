@@ -220,6 +220,71 @@ async function handleApi(req, res) {
     }
   }
 
+  if (p === '/api/interfaces' && req.method === 'GET') {
+    const os = require('os');
+    const nets = os.networkInterfaces();
+    const out = [];
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name] || []) {
+        if (net.family === 'IPv4' && !net.internal) out.push({ name, address: net.address, netmask: net.netmask });
+      }
+    }
+    return sendJson(res, 200, { interfaces: out });
+  }
+
+  if (p === '/api/scan' && req.method === 'POST') {
+    const body = await readBody(req);
+    const net = require('net');
+    const os = require('os');
+    const port = body.port || 3689;
+    const timeout = body.timeout || 300;
+    const targets = [];
+    // Determine subnets from interfaces unless provided
+    let subnets = body.subnets;
+    if (!subnets) {
+      const nets = os.networkInterfaces();
+      const set = new Set();
+      for (const name of Object.keys(nets)) {
+        for (const n of nets[name] || []) {
+          if (n.family === 'IPv4' && !n.internal) {
+            const parts = n.address.split('.');
+            set.add(parts.slice(0, 3).join('.'));
+          }
+        }
+      }
+      subnets = [...set];
+    }
+    for (const sn of subnets) {
+      for (let i = 1; i <= 254; i++) targets.push(sn + '.' + i);
+    }
+    const results = [];
+    // concurrency-limited scan
+    const concurrency = 64;
+    let index = 0;
+    async function worker() {
+      while (index < targets.length) {
+        const ip = targets[index++];
+        await new Promise((resolve) => {
+          const sock = new net.Socket();
+          let done = false;
+          const finish = (open) => {
+            if (done) return; done = true;
+            if (open) results.push({ ip, port });
+            sock.destroy();
+            resolve();
+          };
+          sock.setTimeout(timeout);
+          sock.on('connect', () => finish(true));
+          sock.on('timeout', () => finish(false));
+          sock.on('error', () => finish(false));
+          sock.connect(port, ip);
+        });
+      }
+    }
+    await Promise.all(Array.from({ length: concurrency }, worker));
+    return sendJson(res, 200, { port, results, scanned: targets.length });
+  }
+
   sendJson(res, 404, { error: 'not found' });
 }
 
