@@ -45,6 +45,7 @@ function getId(t) { return t['miid'] || t.miid; }
 async function loadSettings() {
   const s = await api('/api/settings');
   $('downloadDirInput').value = s.downloadDir || '';
+  $('browserModeSelect').value = s.browserMode || 'edge';
   if (s.lastConnection) {
     $('hostInput').value = s.lastConnection.host || '';
     $('portInput').value = s.lastConnection.port || 3689;
@@ -518,7 +519,7 @@ $('btnScanNetwork').addEventListener('click', scanNetwork);
 $('discoveredSelect').addEventListener('change', applyDiscovered);
 $('btnConnect').addEventListener('click', connect);
 $('btnSaveSettings').addEventListener('click', async () => {
-  await api('/api/settings', { method: 'POST', body: { downloadDir: $('downloadDirInput').value.trim() } });
+  await api('/api/settings', { method: 'POST', body: { downloadDir: $('downloadDirInput').value.trim(), browserMode: $('browserModeSelect').value } });
   log('Settings saved');
 });
 $('searchInput').addEventListener('input', applyFilter);

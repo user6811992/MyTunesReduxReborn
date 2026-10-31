@@ -201,7 +201,7 @@ async function handleApi(req, res) {
   if (p === '/api/about' && req.method === 'GET') {
     return sendJson(res, 200, {
       name: 'MyTunes Redux Reborn',
-      version: '2.2.0',
+      version: '2.2.1',
       codename: 'Standalone',
       description: 'A modern, legitimate reimagining of myTunes Redux for browsing/downloading from DAAP-compatible shares you are authorized to access.'
     });
@@ -522,10 +522,15 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   console.log(`MyTunes Redux Reborn running at http://localhost:${PORT}`);
   const { exec } = require('child_process');
+  const settings = (function(){ try { return config.load(); } catch(e){ return {}; } })();
+  const mode = settings.browserMode || 'edge';
   const edge = 'C:\\\\Program Files (x86)\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe';
-  const cmd = require('fs').existsSync(edge)
-    ? `start "" "${edge}" --app=http://localhost:${PORT} --window-size=1280,800`
-    : (process.platform === 'win32' ? `start http://localhost:${PORT}` : `open http://localhost:${PORT}`);
+  let cmd;
+  if (mode === 'default' || !require('fs').existsSync(edge)) {
+    cmd = process.platform === 'win32' ? `start http://localhost:${PORT}` : `open http://localhost:${PORT}`;
+  } else {
+    cmd = `start "" "${edge}" --app=http://localhost:${PORT} --window-size=1280,800`;
+  }
   setTimeout(() => exec(cmd, () => {}), 800);
 });
 

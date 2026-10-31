@@ -1,4 +1,4 @@
-# MyTunes Redux Reborn (v2.2.0 "Standalone")
+# MyTunes Redux Reborn (v2.2.1 "Standalone")
 
 > **Disclaimer:** MyTunes Redux Reborn is an independent open-source
 > reimplementation of the historical myTunes Redux project by Bill Zeller.
