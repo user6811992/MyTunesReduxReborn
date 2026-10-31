@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MyTunes Redux Modern</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">♫</span>
+        <div>
+          <h1>MyTunes Redux Modern</h1>
+          <p class="subtitle">DAAP-compatible music sharing, rebuilt for today</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button id="btnTheme" class="ghost">Theme</button>
+        <button id="btnAbout" class="ghost">About</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="sidebar">
+        <section class="card">
+          <h2>Connection</h2>
+          <label>Discovered shares</label>
+          <select id="discoveredSelect"><option value="">-- select --</option></select>
+          <button id="btnRefreshDiscover" class="ghost small">Refresh</button>
+
+          <label>Host</label>
+          <input id="hostInput" placeholder="192.168.1.10" />
+          <label>Port</label>
+          <input id="portInput" value="3689" />
+          <label>Password (optional)</label>
+          <input id="passwordInput" type="password" />
+          <label>Download folder</label>
+          <input id="downloadDirInput" />
+          <div class="row">
+            <button id="btnConnect">Connect</button>
+            <button id="btnSaveSettings" class="ghost">Save settings</button>
+          </div>
+          <div id="status" class="status"></div>
+        </section>
+
+        <section class="card">
+          <h2>Playlists</h2>
+          <ul id="playlistList" class="list"></ul>
+        </section>
+      </aside>
+
+      <section class="content">
+        <div class="toolbar">
+          <input id="searchInput" placeholder="Search tracks, artists, albums…" />
+          <select id="filterSelect">
+            <option value="all">All fields</option>
+            <option value="artist">Artist</option>
+            <option value="album">Album</option>
+            <option value="genre">Genre</option>
+            <option value="name">Track</option>
+          </select>
+          <button id="btnDownloadSelected" class="primary">Download selected</button>
+        </div>
+        <div class="table-wrap">
+          <table id="trackTable">
+            <thead>
+              <tr>
+                <th><input type="checkbox" id="selectAll" /></th>
+                <th>Track</th>
+                <th>Artist</th>
+                <th>Album</th>
+                <th>Genre</th>
+                <th>Time</th>
+                <th>Size</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="trackBody"></tbody>
+          </table>
+        </div>
+        <div id="log" class="log"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="aboutModal" class="modal hidden">
+    <div class="modal-card">
+      <button id="closeAbout" class="close">×</button>
+      <h2>About MyTunes Redux Modern</h2>
+      <p><strong>Version 2.0.0 “Reborn”</strong></p>
+      <p>A modern, legitimate reimagining of the classic myTunes Redux experience for browsing and downloading from DAAP-compatible music shares you are authorized to access.</p>
+      <h3>In memory of Bill Zeller</h3>
+      <p>This project is dedicated to <strong>Bill Zeller</strong>, creator of the original myTunes and myTunes Redux. His curiosity about how iTunes sharing worked, and his willingness to build tools that made network music sharing usable, inspired a generation of developers and music lovers. Thank you, Bill.</p>
+      <h3>How this was created</h3>
+      <p>This initial recreation was produced through reverse-engineering analysis of the original installer and application using <strong>REA (Reverse Engineering Anything)</strong>, followed by a clean-room modern reimplementation. Shout-out to the <strong>REA</strong> tooling and to <strong>Beam Free</strong> for assisting with the analysis and rebuild planning.</p>
+      <p class="muted">DAAP authentication in iTunes 7+ / Home Sharing remains proprietary; this client supports standards-compatible and legacy shares where permitted.</p>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
