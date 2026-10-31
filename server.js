@@ -521,6 +521,12 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`MyTunes Redux Reborn running at http://localhost:${PORT}`);
+  const { exec } = require('child_process');
+  const edge = 'C:\\\\Program Files (x86)\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe';
+  const cmd = require('fs').existsSync(edge)
+    ? `start "" "${edge}" --app=http://localhost:${PORT} --window-size=1280,800`
+    : (process.platform === 'win32' ? `start http://localhost:${PORT}` : `open http://localhost:${PORT}`);
+  setTimeout(() => exec(cmd, () => {}), 800);
 });
 
 process.on('SIGINT', () => { try { browser.close(); } catch (e) {} try { airplayBrowser.close(); } catch (e) {} process.exit(0); });
