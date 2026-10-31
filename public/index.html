@@ -46,6 +46,16 @@
         </section>
 
         <section class="card">
+          <h2>Profiles</h2>
+          <select id="profileSelect"><option value="">-- select profile --</option></select>
+          <div class="row">
+            <button id="btnLoadProfile" class="ghost small">Load</button>
+            <button id="btnSaveProfile" class="ghost small">Save current</button>
+            <button id="btnDeleteProfile" class="ghost small">Delete</button>
+          </div>
+        </section>
+
+        <section class="card">
           <h2>Playlists</h2>
           <ul id="playlistList" class="list"></ul>
         </section>
@@ -68,6 +78,7 @@
             <thead>
               <tr>
                 <th><input type="checkbox" id="selectAll" /></th>
+                <th>Cover</th>
                 <th>Track</th>
                 <th>Artist</th>
                 <th>Album</th>

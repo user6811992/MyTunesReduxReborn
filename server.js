@@ -128,13 +128,16 @@ async function handleApi(req, res) {
     const settings = config.load();
     const dir = body.destDir || settings.downloadDir;
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const safeName = (body.name || ('track-' + body.itemId)).replace(/[<>:"/\\|?*]/g, '_');
+    const ext = body.format || 'm4a';
+    const dest = path.join(dir, safeName + '.' + ext);
+    if (fs.existsSync(dest) && !body.overwrite) {
+      return sendJson(res, 200, { ok: true, path: dest, skipped: true });
+    }
     const client = new DaapClient({ host: body.host, port: body.port || 3689, password: body.password || '' });
     try {
       await client.serverInfo();
       await client.login();
-      const safeName = (body.name || ('track-' + body.itemId)).replace(/[<>:"/\\|?*]/g, '_');
-      const ext = body.format || 'm4a';
-      const dest = path.join(dir, safeName + '.' + ext);
       await client.download(body.dbId, body.itemId, ext, dest);
       await client.logout();
       return sendJson(res, 200, { ok: true, path: dest });
@@ -168,6 +171,53 @@ async function handleApi(req, res) {
       codename: 'Reborn',
       description: 'A modern, legitimate reimagining of myTunes Redux for browsing/downloading from DAAP-compatible shares you are authorized to access.'
     });
+  }
+
+  if (p === '/api/profiles' && req.method === 'GET') {
+    const s = config.load();
+    return sendJson(res, 200, { profiles: s.connections || [] });
+  }
+  if (p === '/api/profiles' && req.method === 'POST') {
+    const body = await readBody(req);
+    const s = config.load();
+    if (!Array.isArray(s.connections)) s.connections = [];
+    const idx = s.connections.findIndex((c) => c.name === body.name);
+    if (idx >= 0) s.connections[idx] = body; else s.connections.push(body);
+    config.save(s);
+    return sendJson(res, 200, { ok: true, profiles: s.connections });
+  }
+  if (p === '/api/profiles' && req.method === 'DELETE') {
+    const body = await readBody(req);
+    const s = config.load();
+    if (Array.isArray(s.connections)) {
+      s.connections = s.connections.filter((_, i) => i !== body.index);
+      config.save(s);
+    }
+    return sendJson(res, 200, { ok: true, profiles: s.connections || [] });
+  }
+
+  if (p === '/api/artwork' && req.method === 'GET') {
+    const q = parsed.searchParams;
+    const host = q.get('host');
+    const port = parseInt(q.get('port') || '3689', 10);
+    const password = q.get('password') || '';
+    const dbId = q.get('dbId');
+    const itemId = q.get('itemId');
+    if (!host || !dbId || !itemId) { res.writeHead(400); res.end(); return; }
+    const client = new DaapClient({ host, port, password });
+    try {
+      await client.serverInfo();
+      await client.login();
+      const r = await client.get(`/databases/${dbId}/items/${itemId}.jpg?session-id=${client.sessionId}`);
+      await client.logout();
+      if (r.status !== 200 || !r.body || !r.body.length) { res.writeHead(404); res.end(); return; }
+      res.writeHead(200, { 'Content-Type': r.headers['content-type'] || 'image/jpeg', 'Content-Length': r.body.length });
+      res.end(r.body);
+      return;
+    } catch (e) {
+      try { await client.logout(); } catch (_) {}
+      res.writeHead(404); res.end(); return;
+    }
   }
 
   sendJson(res, 404, { error: 'not found' });

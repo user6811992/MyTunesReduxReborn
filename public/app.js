@@ -48,6 +48,7 @@ async function loadSettings() {
     $('hostInput').value = s.lastConnection.host || '';
     $('portInput').value = s.lastConnection.port || 3689;
   }
+  refreshProfiles();
 }
 
 async function refreshDiscover() {
@@ -149,6 +150,7 @@ function renderTracks() {
     const checked = state.selected.has(id);
     tr.innerHTML = `
       <td><input type="checkbox" data-id="${id}" ${checked ? 'checked' : ''} /></td>
+      <td><img class="cover" src="${artworkUrl(t)}" loading="lazy" alt="" onerror="this.style.display='none'" /></td>
       <td>${escapeHtml(t['minm'] || '')}</td>
       <td>${escapeHtml(t['asar'] || '')}</td>
       <td>${escapeHtml(t['asal'] || '')}</td>
@@ -176,6 +178,19 @@ function renderTracks() {
   });
 }
 
+function artworkUrl(t) {
+  if (!state.conn || !state.dbId) return '';
+  const id = getId(t);
+  const params = new URLSearchParams({
+    host: state.conn.host,
+    port: state.conn.port,
+    password: state.conn.password || '',
+    dbId: state.dbId,
+    itemId: id
+  });
+  return '/api/artwork?' + params.toString();
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -186,7 +201,7 @@ async function downloadOne(id) {
   const format = (t['asfm'] || 'm4a').toLowerCase().includes('mp3') ? 'mp3' : 'm4a';
   log(`Downloading ${t['minm'] || id}…`);
   const res = await api('/api/download', { method: 'POST', body: { ...state.conn, dbId: state.dbId, itemId: id, format, name: t['minm'] } });
-  if (res.ok) { log(`Saved: ${res.path}`); }
+  if (res.ok) { log(res.skipped ? `Already downloaded: ${res.path}` : `Saved: ${res.path}`); }
   else log(`Download failed: ${res.error}`);
 }
 
@@ -208,6 +223,54 @@ async function openTrack(id) {
   const filePath = dir + '\\' + safeName + '.' + format;
   await api('/api/open', { method: 'POST', body: { path: filePath } });
   log(`Opened ${filePath}`);
+}
+
+async function refreshProfiles() {
+  const res = await api('/api/profiles');
+  const sel = $('profileSelect');
+  sel.innerHTML = '<option value="">-- select profile --</option>';
+  (res.profiles || []).forEach((p, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = p.name || (p.host + ':' + p.port);
+    sel.appendChild(opt);
+  });
+}
+
+async function loadProfile() {
+  const idx = parseInt($('profileSelect').value, 10);
+  if (isNaN(idx)) return;
+  const res = await api('/api/profiles');
+  const p = (res.profiles || [])[idx];
+  if (!p) return;
+  $('hostInput').value = p.host || '';
+  $('portInput').value = p.port || 3689;
+  $('passwordInput').value = p.password || '';
+  $('downloadDirInput').value = p.downloadDir || $('downloadDirInput').value;
+  log('Loaded profile: ' + (p.name || p.host));
+}
+
+async function saveProfile() {
+  const name = prompt('Profile name:');
+  if (!name) return;
+  const profile = {
+    name,
+    host: $('hostInput').value.trim(),
+    port: parseInt($('portInput').value, 10) || 3689,
+    password: $('passwordInput').value,
+    downloadDir: $('downloadDirInput').value.trim()
+  };
+  await api('/api/profiles', { method: 'POST', body: profile });
+  await refreshProfiles();
+  log('Saved profile: ' + name);
+}
+
+async function deleteProfile() {
+  const idx = parseInt($('profileSelect').value, 10);
+  if (isNaN(idx)) return;
+  await api('/api/profiles', { method: 'DELETE', body: { index: idx } });
+  await refreshProfiles();
+  log('Deleted profile');
 }
 
 // events
@@ -238,6 +301,10 @@ $('btnTheme').addEventListener('click', () => {
   if (saved === 'light') document.body.classList.add('light');
   $('btnTheme').textContent = document.body.classList.contains('light') ? 'Dark' : 'Light';
 })();
+
+$('btnLoadProfile').addEventListener('click', loadProfile);
+$('btnSaveProfile').addEventListener('click', saveProfile);
+$('btnDeleteProfile').addEventListener('click', deleteProfile);
 
 $('btnAbout').addEventListener('click', () => $('aboutModal').classList.remove('hidden'));
 $('closeAbout').addEventListener('click', () => $('aboutModal').classList.add('hidden'));
