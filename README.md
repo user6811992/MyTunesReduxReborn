@@ -21,7 +21,11 @@ to access, with a modern web-based GUI.
 - Smart views (top rated, most played, unrated)
 - Lyrics lookup
 - Internet radio / podcast URL playback
+- Podcast feed loading (RSS)
 - ListenBrainz scrobbling (now playing + submit)
+- Last.fm scrobbling (now playing + submit)
+- Smart playlists with saved rules
+- AirPlay device discovery
 - Connection profiles
 - Configurable download folder
 - Open downloaded files in the default app (optional iTunes COM hook on Windows)
@@ -29,12 +33,11 @@ to access, with a modern web-based GUI.
 - About page with dedication and credits
 
 ## Roadmap
-- AirPlay / Chromecast output
+- AirPlay / Chromecast audio output
 - DACP remote control
 - Podcast subscriptions and auto-download
-- Last.fm / Libre.fm scrobbling
+- Libre.fm scrobbling
 - ReplayGain normalization
-- Smart playlists with saved rules
 
 ## Limitations
 - iTunes 7+ / Home Sharing use proprietary authentication (`Client-DAAP-Validation`)

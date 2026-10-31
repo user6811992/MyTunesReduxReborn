@@ -56,6 +56,11 @@ async function loadSettings() {
   // scrobble token
   const tok = localStorage.getItem('lbToken') || '';
   $('lbTokenInput').value = tok;
+  $('lfmApiKeyInput').value = localStorage.getItem('lfmApiKey') || '';
+  $('lfmSecretInput').value = localStorage.getItem('lfmSecret') || '';
+  $('lfmSessionInput').value = localStorage.getItem('lfmSession') || '';
+  refreshAirplay();
+  refreshSmartPlaylists();
 }
 
 async function refreshDiscover() {
@@ -265,6 +270,7 @@ async function downloadOne(id) {
     state.ratings[id].plays = (state.ratings[id].plays || 0) + 1;
     await api('/api/ratings', { method: 'POST', body: { id, rating: state.ratings[id].rating || 0, plays: state.ratings[id].plays } });
     scrobbleTrack(t, 'submit');
+    scrobbleLastfm(t, 'submit');
   }
   else log(`Download failed: ${res.error}`);
 }
@@ -388,6 +394,124 @@ async function scrobbleTrack(t, type) {
   });
 }
 
+async function refreshAirplay() {
+  const res = await api('/api/airplay');
+  const ul = $('airplayList');
+  ul.innerHTML = '';
+  (res || []).forEach((d) => {
+    const li = document.createElement('li');
+    li.textContent = `${d.name} (${d.host}:${d.port})`;
+    ul.appendChild(li);
+  });
+  if (!res || !res.length) {
+    const li = document.createElement('li');
+    li.textContent = 'No AirPlay devices found';
+    ul.appendChild(li);
+  }
+}
+
+async function loadPodcast() {
+  const url = $('podcastUrlInput').value.trim();
+  if (!url) return;
+  const res = await api('/api/podcast', { method: 'POST', body: { url } });
+  if (res.error) { log('Podcast load failed: ' + res.error); return; }
+  const ul = $('podcastEpisodes');
+  ul.innerHTML = '';
+  (res.episodes || []).forEach((ep) => {
+    const li = document.createElement('li');
+    li.textContent = ep.title;
+    li.title = ep.url;
+    li.onclick = async () => {
+      // download episode
+      const dir = ($('downloadDirInput').value.trim() || '') + '';
+      const safe = ep.title.replace(/[<>:"/\\\\|?*]/g, '_');
+      // use fetch via server? just open URL
+      window.open(ep.url, '_blank');
+      log('Opened episode: ' + ep.title);
+    };
+    ul.appendChild(li);
+  });
+  log(`Podcast "${res.title}": ${res.episodes.length} episodes`);
+}
+
+// Smart Playlists
+function applySmartPlaylist(sp) {
+  if (!sp || !sp.rules) return;
+  const filtered = state.tracks.filter((t) => {
+    return sp.rules.every((rule) => {
+      const field = rule.field;
+      let val;
+      if (field === 'rating') val = state.ratings[getId(t)]?.rating || 0;
+      else if (field === 'plays') val = state.ratings[getId(t)]?.plays || 0;
+      else val = t[field] || '';
+      const rv = rule.value;
+      if (rule.op === 'contains') return String(val).toLowerCase().includes(String(rv).toLowerCase());
+      if (rule.op === 'equals') return String(val).toLowerCase() === String(rv).toLowerCase();
+      if (rule.op === 'gt') return Number(val) > Number(rv);
+      if (rule.op === 'lt') return Number(val) < Number(rv);
+      return true;
+    });
+  });
+  showTracks(filtered);
+  log('Smart playlist: ' + sp.name + ' (' + filtered.length + ')');
+}
+
+async function refreshSmartPlaylists() {
+  const res = await api('/api/smartplaylists');
+  const sel = $('spSelect');
+  sel.innerHTML = '';
+  (res.items || []).forEach((sp, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = sp.name;
+    sel.appendChild(opt);
+  });
+}
+
+async function saveSmartPlaylist() {
+  const name = $('spNameInput').value.trim();
+  if (!name) { log('Smart playlist name required'); return; }
+  const sp = {
+    name,
+    rules: [{ field: $('spFieldSelect').value, op: $('spOpSelect').value, value: $('spValueInput').value }]
+  };
+  await api('/api/smartplaylists', { method: 'POST', body: sp });
+  await refreshSmartPlaylists();
+  log('Saved smart playlist: ' + name);
+}
+
+async function applySelectedSmartPlaylist() {
+  const idx = parseInt($('spSelect').value, 10);
+  const res = await api('/api/smartplaylists');
+  const sp = (res.items || [])[idx];
+  if (sp) applySmartPlaylist(sp);
+}
+
+async function deleteSelectedSmartPlaylist() {
+  const idx = parseInt($('spSelect').value, 10);
+  await api('/api/smartplaylists', { method: 'DELETE', body: { index: idx } });
+  await refreshSmartPlaylists();
+  log('Deleted smart playlist');
+}
+
+// Last.fm scrobble helper
+async function scrobbleLastfm(t, type) {
+  const apiKey = localStorage.getItem('lfmApiKey') || '';
+  const secret = localStorage.getItem('lfmSecret') || '';
+  const sessionKey = localStorage.getItem('lfmSession') || '';
+  if (!apiKey || !secret || !sessionKey) return;
+  await api('/api/scrobble-lastfm', {
+    method: 'POST',
+    body: {
+      apiKey, secret, sessionKey,
+      type,
+      artist: t['asar'] || '',
+      title: t['minm'] || '',
+      album: t['asal'] || ''
+    }
+  });
+}
+
 // events
 $('btnRefreshDiscover').addEventListener('click', refreshDiscover);
 $('btnScanNetwork').addEventListener('click', scanNetwork);
@@ -424,6 +548,23 @@ $('btnDeleteProfile').addEventListener('click', deleteProfile);
 
 $('btnAbout').addEventListener('click', () => $('aboutModal').classList.remove('hidden'));
 $('closeAbout').addEventListener('click', () => $('aboutModal').classList.add('hidden'));
+
+$('btnRefreshAirplay').addEventListener('click', refreshAirplay);
+$('btnLoadPodcast').addEventListener('click', loadPodcast);
+$('btnSaveSP').addEventListener('click', saveSmartPlaylist);
+$('btnApplySP').addEventListener('click', applySelectedSmartPlaylist);
+$('btnDeleteSP').addEventListener('click', deleteSelectedSmartPlaylist);
+
+// Last.fm settings save
+const saveLfm = () => {
+  localStorage.setItem('lfmApiKey', $('lfmApiKeyInput').value.trim());
+  localStorage.setItem('lfmSecret', $('lfmSecretInput').value.trim());
+  localStorage.setItem('lfmSession', $('lfmSessionInput').value.trim());
+  log('Last.fm settings saved');
+};
+$('lfmApiKeyInput').addEventListener('change', saveLfm);
+$('lfmSecretInput').addEventListener('change', saveLfm);
+$('lfmSessionInput').addEventListener('change', saveLfm);
 $('closeLyrics').addEventListener('click', () => $('lyricsModal').classList.add('hidden'));
 
 $('btnPlayRadio').addEventListener('click', () => {

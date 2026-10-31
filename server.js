@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 8765;
 const PUBLIC = path.join(__dirname, 'public');
 
 let discovered = [];
-const browser = startBrowser((svc) => {
+const browser = startBrowser('_daap._tcp', (svc) => {
   const key = svc.name + '|' + (svc.addresses || []).join(',');
   if (!discovered.find((d) => d.key === key)) {
     discovered.push({ key, ...svc });
@@ -19,6 +19,14 @@ const browser = startBrowser((svc) => {
   const idx = discovered.findIndex((d) => d.name === svc.name);
   if (idx >= 0) discovered[idx] = { key, ...svc };
 }, (e) => { /* ignore */ });
+
+let airplayDiscovered = [];
+const airplayBrowser = startBrowser('_airplay._tcp', (svc) => {
+  const key = svc.name + '|' + (svc.addresses || []).join(',');
+  if (!airplayDiscovered.find((d) => d.key === key)) airplayDiscovered.push({ key, ...svc });
+  const idx = airplayDiscovered.findIndex((d) => d.name === svc.name);
+  if (idx >= 0) airplayDiscovered[idx] = { key, ...svc };
+}, (e) => {});
 
 function sendJson(res, code, obj) {
   const data = JSON.stringify(obj);
@@ -167,8 +175,8 @@ async function handleApi(req, res) {
   if (p === '/api/about' && req.method === 'GET') {
     return sendJson(res, 200, {
       name: 'MyTunes Redux Reborn',
-      version: '2.0.0',
-      codename: 'Reborn',
+      version: '2.1.0',
+      codename: 'Encore',
       description: 'A modern, legitimate reimagining of myTunes Redux for browsing/downloading from DAAP-compatible shares you are authorized to access.'
     });
   }
@@ -381,6 +389,102 @@ async function handleApi(req, res) {
     return sendJson(res, 400, { ok: false, error: 'unsupported service or missing token' });
   }
 
+  if (p === '/api/smartplaylists' && req.method === 'GET') {
+    const s = config.load();
+    return sendJson(res, 200, { items: s.smartPlaylists || [] });
+  }
+  if (p === '/api/smartplaylists' && req.method === 'POST') {
+    const body = await readBody(req);
+    const s = config.load();
+    if (!Array.isArray(s.smartPlaylists)) s.smartPlaylists = [];
+    const idx = s.smartPlaylists.findIndex((x) => x.name === body.name);
+    if (idx >= 0) s.smartPlaylists[idx] = body; else s.smartPlaylists.push(body);
+    config.save(s);
+    return sendJson(res, 200, { ok: true, items: s.smartPlaylists });
+  }
+  if (p === '/api/smartplaylists' && req.method === 'DELETE') {
+    const body = await readBody(req);
+    const s = config.load();
+    if (Array.isArray(s.smartPlaylists)) {
+      s.smartPlaylists.splice(body.index, 1);
+      config.save(s);
+    }
+    return sendJson(res, 200, { ok: true, items: s.smartPlaylists || [] });
+  }
+
+  if (p === '/api/podcast' && req.method === 'POST') {
+    const body = await readBody(req);
+    const https = require('https');
+    const http = require('http');
+    const client = body.url && body.url.startsWith('https') ? https : http;
+    client.get(body.url, (r) => {
+      const chunks = [];
+      r.on('data', (c) => chunks.push(c));
+      r.on('end', () => {
+        const xml = Buffer.concat(chunks).toString('utf8');
+        const episodes = [];
+        const itemRe = /<item>([\s\S]*?)<\/item>/g;
+        let m;
+        while ((m = itemRe.exec(xml)) !== null) {
+          const block = m[1];
+          const title = (block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/) || [])[1] || 'Episode';
+          const url = (block.match(/<enclosure[^>]*url="([^"]+)"/) || [])[1] || '';
+          const pubDate = (block.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1] || '';
+          if (url) episodes.push({ title: title.trim(), url, pubDate });
+        }
+        const feedTitle = (xml.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/) || [])[1] || 'Podcast';
+        sendJson(res, 200, { title: feedTitle.trim(), episodes });
+      });
+    }).on('error', (e) => sendJson(res, 500, { error: e.message }));
+    return;
+  }
+
+  if (p === '/api/scrobble-lastfm' && req.method === 'POST') {
+    const body = await readBody(req);
+    const crypto = require('crypto');
+    const method = body.type === 'nowplaying' ? 'track.updateNowPlaying' : 'track.scrobble';
+    const params = {
+      method,
+      api_key: body.apiKey,
+      sk: body.sessionKey,
+      artist: body.artist || '',
+      track: body.title || '',
+      album: body.album || '',
+      format: 'json'
+    };
+    if (method === 'track.scrobble') params.timestamp = Math.floor(Date.now() / 1000);
+    // signature
+    const keys = Object.keys(params).sort();
+    let sigBase = '';
+    for (const k of keys) sigBase += k + params[k];
+    sigBase += body.secret || '';
+    const apiSig = crypto.createHash('md5').update(sigBase).digest('hex');
+    params.api_sig = apiSig;
+    const query = new URLSearchParams(params).toString();
+    const https = require('https');
+    const reqOpts = {
+      hostname: 'ws.audioscrobbler.com',
+      path: '/2.0/?' + query,
+      method: 'POST'
+    };
+    const r = https.request(reqOpts, (resp) => {
+      const chunks = [];
+      resp.on('data', (c) => chunks.push(c));
+      resp.on('end', () => sendJson(res, 200, { ok: resp.statusCode < 300, status: resp.statusCode, body: Buffer.concat(chunks).toString() }));
+    });
+    r.on('error', (e) => sendJson(res, 500, { ok: false, error: e.message }));
+    r.end();
+    return;
+  }
+
+  if (p === '/api/airplay' && req.method === 'GET') {
+    return sendJson(res, 200, airplayDiscovered.map((d) => ({
+      name: d.name,
+      host: (d.addresses && d.addresses[0]) || d.host,
+      port: d.port || 7000
+    })));
+  }
+
   sendJson(res, 404, { error: 'not found' });
 }
 
@@ -393,4 +497,4 @@ server.listen(PORT, () => {
   console.log(`MyTunes Redux Reborn running at http://localhost:${PORT}`);
 });
 
-process.on('SIGINT', () => { try { browser.close(); } catch (e) {} process.exit(0); });
+process.on('SIGINT', () => { try { browser.close(); } catch (e) {} try { airplayBrowser.close(); } catch (e) {} process.exit(0); });
