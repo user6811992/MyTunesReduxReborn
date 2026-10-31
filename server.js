@@ -7,8 +7,6 @@ const { startBrowser } = require('./lib/mdns');
 const config = require('./lib/config');
 
 const PORT = process.env.PORT || 8765;
-const PUBLIC = path.join(__dirname, 'public');
-
 let discovered = [];
 const browser = startBrowser('_daap._tcp', (svc) => {
   const key = svc.name + '|' + (svc.addresses || []).join(',');
@@ -34,19 +32,47 @@ function sendJson(res, code, obj) {
   res.end(data);
 }
 
+const PUBLIC = null; // placeholder, assets resolved at runtime
+
+function appDir() {
+  try {
+    const sea = require('node:sea');
+    if (sea.isSea()) return path.dirname(process.execPath);
+  } catch (e) {}
+  return path.join(__dirname, '..');
+}
+
+function readAsset(rel) {
+  const normalized = rel.replace(/^[/\\]+/, '');
+  try {
+    const sea = require('node:sea');
+    if (sea.isSea()) {
+      const key = 'public/' + normalized;
+      if (sea.getAssetKeys().includes(key)) {
+        return Buffer.from(sea.getRawAsset(key));
+      }
+    }
+  } catch (e) {}
+  const fs = require('fs');
+  const pathMod = require('path');
+  return fs.readFileSync(pathMod.join(appDir(), 'public', normalized));
+}
+
 function serveStatic(req, res) {
   const parsed = new URL(req.url, 'http://localhost');
   let pathname = parsed.pathname;
   if (pathname === '/') pathname = '/index.html';
-  const filePath = path.join(PUBLIC, pathname);
-  if (!filePath.startsWith(PUBLIC)) { res.writeHead(403); res.end(); return; }
-  fs.readFile(filePath, (err, data) => {
-    if (err) { res.writeHead(404); res.end('Not found'); return; }
-    const ext = path.extname(filePath).toLowerCase();
-    const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml' };
+  const rel = pathname.replace(/^\/+/, '');
+  if (rel.includes('..')) { res.writeHead(403); res.end(); return; }
+  try {
+    const data = readAsset(rel);
+    const ext = path.extname(rel).toLowerCase();
+    const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
     res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream' });
     res.end(data);
-  });
+  } catch (e) {
+    res.writeHead(404); res.end('Not found');
+  }
 }
 
 function readBody(req) {
@@ -175,8 +201,8 @@ async function handleApi(req, res) {
   if (p === '/api/about' && req.method === 'GET') {
     return sendJson(res, 200, {
       name: 'MyTunes Redux Reborn',
-      version: '2.1.0',
-      codename: 'Encore',
+      version: '2.2.0',
+      codename: 'Standalone',
       description: 'A modern, legitimate reimagining of myTunes Redux for browsing/downloading from DAAP-compatible shares you are authorized to access.'
     });
   }

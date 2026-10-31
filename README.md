@@ -1,4 +1,4 @@
-# MyTunes Redux Reborn (v2.1.0 "Encore")
+# MyTunes Redux Reborn (v2.2.0 "Standalone")
 
 > **Disclaimer:** MyTunes Redux Reborn is an independent open-source
 > reimplementation of the historical myTunes Redux project by Bill Zeller.
@@ -30,6 +30,7 @@ to access, with a modern web-based GUI.
 - Configurable download folder
 - Open downloaded files in the default app (optional iTunes COM hook on Windows)
 - Modern responsive web UI with dark/light themes
+- Standalone Windows executable (no Node install required)
 - About page with dedication and credits
 
 ## Roadmap
@@ -45,11 +46,14 @@ to access, with a modern web-based GUI.
   standards-compatible and legacy (pre-iTunes 7) shares where permitted.
 - No DRM circumvention or unauthorized access is provided or intended.
 
-## Run
+## Run (development)
 ```bash
 npm start
 ```
 Then open http://localhost:8765
+
+## Run (standalone)
+Double-click `MyTunesReduxReborn.exe` (or the Desktop shortcut). It starts the local server and opens the app window.
 
 ## Test
 ```bash

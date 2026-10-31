@@ -1,6 +1,6 @@
 {
   "name": "mytunes-redux-reborn",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "A modern, legitimate reimagining of myTunes Redux for browsing and downloading from DAAP-compatible music shares.",
   "main": "server.js",
   "scripts": {
