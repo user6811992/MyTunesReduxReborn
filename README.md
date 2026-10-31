@@ -1,4 +1,9 @@
-# MyTunes Redux Modern (v2.0.0 "Reborn")
+# MyTunes Redux Reborn (v2.0.0 "Reborn")
+
+> **Disclaimer:** MyTunes Redux Reborn is an independent open-source
+> reimplementation of the historical myTunes Redux project by Bill Zeller.
+> It is not affiliated with, endorsed by, or related to mytunes.ai, Apple Inc.,
+> or iTunes.
 
 A modern, legitimate reimagining of the classic **myTunes Redux** experience:
 browse and download from DAAP-compatible music shares that you are authorized

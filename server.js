@@ -163,7 +163,7 @@ async function handleApi(req, res) {
 
   if (p === '/api/about' && req.method === 'GET') {
     return sendJson(res, 200, {
-      name: 'MyTunes Redux Modern',
+      name: 'MyTunes Redux Reborn',
       version: '2.0.0',
       codename: 'Reborn',
       description: 'A modern, legitimate reimagining of myTunes Redux for browsing/downloading from DAAP-compatible shares you are authorized to access.'
@@ -179,7 +179,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`MyTunes Redux Modern running at http://localhost:${PORT}`);
+  console.log(`MyTunes Redux Reborn running at http://localhost:${PORT}`);
 });
 
 process.on('SIGINT', () => { try { browser.close(); } catch (e) {} process.exit(0); });
