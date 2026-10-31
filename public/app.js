@@ -60,7 +60,12 @@ async function loadSettings() {
   $('lfmApiKeyInput').value = localStorage.getItem('lfmApiKey') || '';
   $('lfmSecretInput').value = localStorage.getItem('lfmSecret') || '';
   $('lfmSessionInput').value = localStorage.getItem('lfmSession') || '';
+  $('libreApiKeyInput').value = localStorage.getItem('libreApiKey') || '';
+  $('libreSecretInput').value = localStorage.getItem('libreSecret') || '';
+  $('libreSessionInput').value = localStorage.getItem('libreSession') || '';
   refreshAirplay();
+  refreshChromecast();
+  refreshPodcastSubscriptions();
   refreshSmartPlaylists();
 }
 
@@ -200,6 +205,7 @@ function renderTracks() {
         <button data-dl="${id}">Download</button>
         <button data-open="${id}" class="ghost">Open</button>
         <button data-lyrics="${id}" class="ghost">Lyrics</button>
+        <button data-rg="${id}" class="ghost">RG</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -218,6 +224,9 @@ function renderTracks() {
   });
   tbody.querySelectorAll('button[data-lyrics]').forEach((btn) => {
     btn.addEventListener('click', () => showLyrics(btn.dataset.lyrics));
+  });
+  tbody.querySelectorAll('button[data-rg]').forEach((btn) => {
+    btn.addEventListener('click', () => showReplayGain(btn.dataset.rg));
   });
   tbody.querySelectorAll('.star').forEach((star) => {
     star.addEventListener('click', async () => {
@@ -272,6 +281,7 @@ async function downloadOne(id) {
     await api('/api/ratings', { method: 'POST', body: { id, rating: state.ratings[id].rating || 0, plays: state.ratings[id].plays } });
     scrobbleTrack(t, 'submit');
     scrobbleLastfm(t, 'submit');
+    scrobbleLibre(t, 'submit');
   }
   else log(`Download failed: ${res.error}`);
 }
@@ -369,6 +379,20 @@ async function scanNetwork() {
   log(`Network scan complete: ${res.results.length} host(s) found`);
 }
 
+async function showReplayGain(id) {
+  const t = state.tracks.find((x) => getId(x) == id);
+  if (!t) return;
+  const settings = await api('/api/settings');
+  const dir = settings.downloadDir || '';
+  const format = (t['asfm'] || 'm4a').toLowerCase().includes('mp3') ? 'mp3' : 'm4a';
+  const safeName = (t['minm'] || ('track-' + id)).replace(/[<>:"/\\|?*]/g, '_');
+  const filePath = dir + '\\\\' + safeName + '.' + format;
+  const res = await api('/api/replaygain?path=' + encodeURIComponent(filePath));
+  if (res.replayGain) log(`ReplayGain for ${t['minm']}: ${JSON.stringify(res.replayGain)}`);
+  else if (res.tags) log(`No ReplayGain tag for ${t['minm']}; tags: ${Object.keys(res.tags).join(', ')}`);
+  else log(`ReplayGain read failed: ${res.error || 'unknown'}`);
+}
+
 async function showLyrics(id) {
   const t = state.tracks.find((x) => getId(x) == id);
   if (!t) return;
@@ -409,6 +433,67 @@ async function refreshAirplay() {
     li.textContent = 'No AirPlay devices found';
     ul.appendChild(li);
   }
+}
+
+async function refreshChromecast() {
+  const res = await api('/api/chromecast');
+  const ul = $('chromecastList');
+  ul.innerHTML = '';
+  (res || []).forEach((d) => {
+    const li = document.createElement('li');
+    li.textContent = `${d.name} (${d.host}:${d.port})`;
+    ul.appendChild(li);
+  });
+  if (!res || !res.length) {
+    const li = document.createElement('li');
+    li.textContent = 'No Chromecast devices found';
+    ul.appendChild(li);
+  }
+}
+
+async function refreshPodcastSubscriptions() {
+  const res = await api('/api/podcasts');
+  const ul = $('podcastSubscriptions');
+  ul.innerHTML = '';
+  (res.items || []).forEach((p, i) => {
+    const li = document.createElement('li');
+    li.textContent = p.title || p.url;
+    li.title = p.url;
+    li.onclick = async () => {
+      $('podcastUrlInput').value = p.url;
+      await loadPodcast();
+    };
+    ul.appendChild(li);
+  });
+}
+
+async function subscribePodcast() {
+  const url = $('podcastUrlInput').value.trim();
+  if (!url) return;
+  // fetch title
+  const res = await api('/api/podcast', { method: 'POST', body: { url } });
+  const title = res.title || url;
+  await api('/api/podcasts', { method: 'POST', body: { url, title } });
+  await refreshPodcastSubscriptions();
+  log('Subscribed: ' + title);
+}
+
+async function syncPodcasts() {
+  const res = await api('/api/podcast-sync', { method: 'POST', body: {} });
+  (res.results || []).forEach((r) => {
+    log(`Podcast sync: ${r.title} (${r.episodes ? r.episodes.length : 0} episodes)${r.error ? ' - ' + r.error : ''}`);
+  });
+}
+
+async function scrobbleLibre(t, type) {
+  const apiKey = localStorage.getItem('libreApiKey') || '';
+  const secret = localStorage.getItem('libreSecret') || '';
+  const sessionKey = localStorage.getItem('libreSession') || '';
+  if (!apiKey || !secret || !sessionKey) return;
+  await api('/api/scrobble-librefm', {
+    method: 'POST',
+    body: { apiKey, secret, sessionKey, type, artist: t['asar'] || '', title: t['minm'] || '', album: t['asal'] || '' }
+  });
 }
 
 async function loadPodcast() {
@@ -551,6 +636,9 @@ $('btnAbout').addEventListener('click', () => $('aboutModal').classList.remove('
 $('closeAbout').addEventListener('click', () => $('aboutModal').classList.add('hidden'));
 
 $('btnRefreshAirplay').addEventListener('click', refreshAirplay);
+$('btnRefreshChromecast').addEventListener('click', refreshChromecast);
+$('btnSubscribePodcast').addEventListener('click', subscribePodcast);
+$('btnSyncPodcasts').addEventListener('click', syncPodcasts);
 $('btnLoadPodcast').addEventListener('click', loadPodcast);
 $('btnSaveSP').addEventListener('click', saveSmartPlaylist);
 $('btnApplySP').addEventListener('click', applySelectedSmartPlaylist);
@@ -566,6 +654,15 @@ const saveLfm = () => {
 $('lfmApiKeyInput').addEventListener('change', saveLfm);
 $('lfmSecretInput').addEventListener('change', saveLfm);
 $('lfmSessionInput').addEventListener('change', saveLfm);
+const saveLibre = () => {
+  localStorage.setItem('libreApiKey', $('libreApiKeyInput').value.trim());
+  localStorage.setItem('libreSecret', $('libreSecretInput').value.trim());
+  localStorage.setItem('libreSession', $('libreSessionInput').value.trim());
+  log('Libre.fm settings saved');
+};
+$('libreApiKeyInput').addEventListener('change', saveLibre);
+$('libreSecretInput').addEventListener('change', saveLibre);
+$('libreSessionInput').addEventListener('change', saveLibre);
 $('closeLyrics').addEventListener('click', () => $('lyricsModal').classList.add('hidden'));
 
 $('btnPlayRadio').addEventListener('click', () => {

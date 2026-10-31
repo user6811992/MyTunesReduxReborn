@@ -1,4 +1,4 @@
-# MyTunes Redux Reborn (v2.2.1 "Standalone")
+# MyTunes Redux Reborn (v2.3.0 "Horizon")
 
 > **Disclaimer:** MyTunes Redux Reborn is an independent open-source
 > reimplementation of the historical myTunes Redux project by Bill Zeller.
@@ -26,6 +26,11 @@ to access, with a modern web-based GUI.
 - Last.fm scrobbling (now playing + submit)
 - Smart playlists with saved rules
 - AirPlay device discovery
+- Chromecast device discovery
+- Podcast feed loading and subscription list
+- Last.fm scrobbling
+- Libre.fm scrobbling
+- ReplayGain tag reading
 - Connection profiles
 - Configurable download folder
 - Open downloaded files in the default app (optional iTunes COM hook on Windows)
@@ -36,9 +41,8 @@ to access, with a modern web-based GUI.
 ## Roadmap
 - AirPlay / Chromecast audio output
 - DACP remote control
-- Podcast subscriptions and auto-download
-- Libre.fm scrobbling
-- ReplayGain normalization
+- Podcast auto-download
+- ReplayGain playback normalization
 
 ## Limitations
 - iTunes 7+ / Home Sharing use proprietary authentication (`Client-DAAP-Validation`)

@@ -26,6 +26,14 @@ const airplayBrowser = startBrowser('_airplay._tcp', (svc) => {
   if (idx >= 0) airplayDiscovered[idx] = { key, ...svc };
 }, (e) => {});
 
+let chromecastDiscovered = [];
+const chromecastBrowser = startBrowser('_googlecast._tcp', (svc) => {
+  const key = svc.name + '|' + (svc.addresses || []).join(',');
+  if (!chromecastDiscovered.find((d) => d.key === key)) chromecastDiscovered.push({ key, ...svc });
+  const idx = chromecastDiscovered.findIndex((d) => d.name === svc.name);
+  if (idx >= 0) chromecastDiscovered[idx] = { key, ...svc };
+}, (e) => {});
+
 function sendJson(res, code, obj) {
   const data = JSON.stringify(obj);
   res.writeHead(code, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) });
@@ -201,8 +209,8 @@ async function handleApi(req, res) {
   if (p === '/api/about' && req.method === 'GET') {
     return sendJson(res, 200, {
       name: 'MyTunes Redux Reborn',
-      version: '2.2.1',
-      codename: 'Standalone',
+      version: '2.3.0',
+      codename: 'Horizon',
       description: 'A modern, legitimate reimagining of myTunes Redux for browsing/downloading from DAAP-compatible shares you are authorized to access.'
     });
   }
@@ -511,6 +519,118 @@ async function handleApi(req, res) {
     })));
   }
 
+  if (p === '/api/chromecast' && req.method === 'GET') {
+    return sendJson(res, 200, chromecastDiscovered.map((d) => ({
+      name: d.name,
+      host: (d.addresses && d.addresses[0]) || d.host,
+      port: d.port || 8009
+    })));
+  }
+
+  if (p === '/api/podcasts' && req.method === 'GET') {
+    const s = config.load();
+    return sendJson(res, 200, { items: s.podcastSubscriptions || [] });
+  }
+  if (p === '/api/podcasts' && req.method === 'POST') {
+    const body = await readBody(req);
+    const s = config.load();
+    if (!Array.isArray(s.podcastSubscriptions)) s.podcastSubscriptions = [];
+    if (!s.podcastSubscriptions.find((x) => x.url === body.url)) s.podcastSubscriptions.push({ url: body.url, title: body.title || body.url });
+    config.save(s);
+    return sendJson(res, 200, { ok: true, items: s.podcastSubscriptions });
+  }
+  if (p === '/api/podcasts' && req.method === 'DELETE') {
+    const body = await readBody(req);
+    const s = config.load();
+    if (Array.isArray(s.podcastSubscriptions)) {
+      s.podcastSubscriptions.splice(body.index, 1);
+      config.save(s);
+    }
+    return sendJson(res, 200, { ok: true, items: s.podcastSubscriptions || [] });
+  }
+
+  if (p === '/api/podcast-sync' && req.method === 'POST') {
+    const s = config.load();
+    const subs = s.podcastSubscriptions || [];
+    const results = [];
+    for (const sub of subs) {
+      try {
+        const https = require('https'); const http = require('http');
+        const client = sub.url.startsWith('https') ? https : http;
+        const xml = await new Promise((resolve, reject) => {
+          client.get(sub.url, (r) => {
+            const chunks = [];
+            r.on('data', (c) => chunks.push(c));
+            r.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+          }).on('error', reject);
+        });
+        const itemRe = /<item>([\s\S]*?)<\/item>/g;
+        let m; const episodes = [];
+        while ((m = itemRe.exec(xml)) !== null) {
+          const block = m[1];
+          const title = (block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/) || [])[1] || 'Episode';
+          const url = (block.match(/<enclosure[^>]*url="([^"]+)"/) || [])[1] || '';
+          if (url) episodes.push({ title: title.trim(), url });
+        }
+        results.push({ title: sub.title, episodes: episodes.slice(0, 5) });
+      } catch (e) {
+        results.push({ title: sub.title, error: e.message });
+      }
+    }
+    return sendJson(res, 200, { results });
+  }
+
+  if (p === '/api/replaygain' && req.method === 'GET') {
+    const q = parsed.searchParams;
+    const filePath = q.get('path');
+    if (!filePath) { sendJson(res, 400, { error: 'path required' }); return; }
+    try {
+      const mm = require('music-metadata');
+      const meta = await mm.parseFile(filePath);
+      const rg = meta.common.replaygainAlbumGain || meta.common.replaygainTrackGain || null;
+      sendJson(res, 200, { replayGain: rg, tags: meta.common });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
+    return;
+  }
+
+  if (p === '/api/scrobble-librefm' && req.method === 'POST') {
+    const body = await readBody(req);
+    const crypto = require('crypto');
+    const method = body.type === 'nowplaying' ? 'track.updateNowPlaying' : 'track.scrobble';
+    const params = {
+      method,
+      api_key: body.apiKey,
+      sk: body.sessionKey,
+      artist: body.artist || '',
+      track: body.title || '',
+      album: body.album || '',
+      format: 'json'
+    };
+    if (method === 'track.scrobble') params.timestamp = Math.floor(Date.now() / 1000);
+    const keys = Object.keys(params).sort();
+    let sigBase = '';
+    for (const k of keys) sigBase += k + params[k];
+    sigBase += body.secret || '';
+    const apiSig = crypto.createHash('md5').update(sigBase).digest('hex');
+    params.api_sig = apiSig;
+    const query = new URLSearchParams(params).toString();
+    const https = require('https');
+    const r = https.request({
+      hostname: 'libre.fm',
+      path: '/2.0/?' + query,
+      method: 'POST'
+    }, (resp) => {
+      const chunks = [];
+      resp.on('data', (c) => chunks.push(c));
+      resp.on('end', () => sendJson(res, 200, { ok: resp.statusCode < 300, status: resp.statusCode, body: Buffer.concat(chunks).toString() }));
+    });
+    r.on('error', (e) => sendJson(res, 500, { ok: false, error: e.message }));
+    r.end();
+    return;
+  }
+
   sendJson(res, 404, { error: 'not found' });
 }
 
@@ -534,4 +654,4 @@ server.listen(PORT, () => {
   setTimeout(() => exec(cmd, () => {}), 800);
 });
 
-process.on('SIGINT', () => { try { browser.close(); } catch (e) {} try { airplayBrowser.close(); } catch (e) {} process.exit(0); });
+process.on('SIGINT', () => { try { browser.close(); } catch (e) {} try { airplayBrowser.close(); } catch (e) {} try { chromecastBrowser.close(); } catch (e) {} process.exit(0); });

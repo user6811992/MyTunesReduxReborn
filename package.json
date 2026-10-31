@@ -1,6 +1,6 @@
 {
   "name": "mytunes-redux-reborn",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "description": "A modern, legitimate reimagining of myTunes Redux for browsing and downloading from DAAP-compatible music shares.",
   "main": "server.js",
   "scripts": {
@@ -17,5 +17,11 @@
     "itunes",
     "music-sharing",
     "mytunes"
-  ]
+  ],
+  "dependencies": {
+    "airplay-js": "^0.3.0",
+    "castv2-client": "^1.2.0",
+    "music-metadata": "^12.3.3",
+    "rss-parser": "^3.13.0"
+  }
 }
