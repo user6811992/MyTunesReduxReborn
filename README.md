@@ -1,4 +1,4 @@
-# MyTunes Redux Reborn (v2.0.0 "Reborn")
+# MyTunes Redux Reborn (v2.1.0 "Encore")
 
 > **Disclaimer:** MyTunes Redux Reborn is an independent open-source
 > reimplementation of the historical myTunes Redux project by Bill Zeller.
@@ -62,4 +62,3 @@ In memory of **Bill Zeller**, creator of the original myTunes and myTunes Redux.
 ## Credits
 Initial recreation analysis performed with **REA (Reverse Engineering Anything)**;
 shout-out to **Beam Free** for assistance with analysis and rebuild planning.
-Created for testing prior to open-sourcing on GitHub.
