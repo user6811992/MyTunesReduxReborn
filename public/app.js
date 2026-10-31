@@ -5,7 +5,8 @@ const state = {
   containers: [],
   activeContainer: null,
   dbId: null,
-  selected: new Set()
+  selected: new Set(),
+  ratings: {}
 };
 
 const $ = (id) => document.getElementById(id);
@@ -49,6 +50,12 @@ async function loadSettings() {
     $('portInput').value = s.lastConnection.port || 3689;
   }
   refreshProfiles();
+  const r = await api('/api/ratings');
+  state.ratings = r.ratings || {};
+  renderSmartViews();
+  // scrobble token
+  const tok = localStorage.getItem('lbToken') || '';
+  $('lbTokenInput').value = tok;
 }
 
 async function refreshDiscover() {
@@ -90,6 +97,7 @@ async function connect() {
   // save last connection
   await api('/api/settings', { method: 'POST', body: { lastConnection: { host, port }, downloadDir } });
   renderPlaylists();
+  renderSmartViews();
   applyFilter();
 }
 
@@ -123,6 +131,28 @@ function showTracks(tracks) {
   applyFilter();
 }
 
+function renderSmartViews() {
+  const ul = $('smartViewList');
+  ul.innerHTML = '';
+  const views = [
+    { name: 'Top Rated (4+)', fn: (t) => (state.ratings[getId(t)]?.rating || 0) >= 4 },
+    { name: 'Most Played', fn: (t) => (state.ratings[getId(t)]?.plays || 0) > 0, sort: (a,b) => (state.ratings[getId(b)]?.plays||0) - (state.ratings[getId(a)]?.plays||0) },
+    { name: 'Unrated', fn: (t) => !(state.ratings[getId(t)]?.rating) },
+    { name: 'All Tracks', fn: () => true }
+  ];
+  views.forEach((v) => {
+    const li = document.createElement('li');
+    li.textContent = v.name;
+    li.onclick = () => {
+      let list = state.tracks.filter(v.fn);
+      if (v.sort) list = list.sort(v.sort);
+      showTracks(list);
+      log('Smart view: ' + v.name + ' (' + list.length + ')');
+    };
+    ul.appendChild(li);
+  });
+}
+
 function applyFilter() {
   const q = $('searchInput').value.trim().toLowerCase();
   const field = $('filterSelect').value;
@@ -148,18 +178,22 @@ function renderTracks() {
     const id = getId(t);
     const tr = document.createElement('tr');
     const checked = state.selected.has(id);
+    const rating = (state.ratings[id] && state.ratings[id].rating) || 0;
+    const stars = [1,2,3,4,5].map((n) => `<span class="star" data-rate="${id}" data-val="${n}" style="cursor:pointer;color:${n <= rating ? '#f59f00' : '#555'}">★</span>`).join('');
     tr.innerHTML = `
       <td><input type="checkbox" data-id="${id}" ${checked ? 'checked' : ''} /></td>
-      <td><img class="cover" src="${artworkUrl(t)}" loading="lazy" alt="" onerror="this.style.display='none'" /></td>
+      <td><img class="cover" src="${artworkUrl(t)}" loading="lazy" alt="" onerror="coverFallback(this, ${JSON.stringify(t['asar']||'')}, ${JSON.stringify(t['asal']||'')})" /></td>
       <td>${escapeHtml(t['minm'] || '')}</td>
       <td>${escapeHtml(t['asar'] || '')}</td>
       <td>${escapeHtml(t['asal'] || '')}</td>
       <td>${escapeHtml(t['asgn'] || '')}</td>
       <td>${formatTime(t['astm'] ? Math.round(t['astm'] / 1000) : 0)}</td>
       <td>${formatSize(t['assz'])}</td>
+      <td>${stars}</td>
       <td class="actions">
         <button data-dl="${id}">Download</button>
         <button data-open="${id}" class="ghost">Open</button>
+        <button data-lyrics="${id}" class="ghost">Lyrics</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -176,6 +210,20 @@ function renderTracks() {
   tbody.querySelectorAll('button[data-open]').forEach((btn) => {
     btn.addEventListener('click', () => openTrack(btn.dataset.open));
   });
+  tbody.querySelectorAll('button[data-lyrics]').forEach((btn) => {
+    btn.addEventListener('click', () => showLyrics(btn.dataset.lyrics));
+  });
+  tbody.querySelectorAll('.star').forEach((star) => {
+    star.addEventListener('click', async () => {
+      const id = star.dataset.rate;
+      const val = parseInt(star.dataset.val, 10);
+      if (!state.ratings[id]) state.ratings[id] = { rating: 0, plays: 0 };
+      state.ratings[id].rating = val;
+      await api('/api/ratings', { method: 'POST', body: { id, rating: val, plays: state.ratings[id].plays || 0 } });
+      renderTracks();
+      renderSmartViews();
+    });
+  });
 }
 
 function artworkUrl(t) {
@@ -191,6 +239,16 @@ function artworkUrl(t) {
   return '/api/artwork?' + params.toString();
 }
 
+async function coverFallback(img, artist, album) {
+  try {
+    const res = await api('/api/cover-search?artist=' + encodeURIComponent(artist) + '&album=' + encodeURIComponent(album));
+    if (res.artwork) img.src = res.artwork;
+    else img.style.display = 'none';
+  } catch (e) {
+    img.style.display = 'none';
+  }
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
@@ -201,7 +259,13 @@ async function downloadOne(id) {
   const format = (t['asfm'] || 'm4a').toLowerCase().includes('mp3') ? 'mp3' : 'm4a';
   log(`Downloading ${t['minm'] || id}…`);
   const res = await api('/api/download', { method: 'POST', body: { ...state.conn, dbId: state.dbId, itemId: id, format, name: t['minm'] } });
-  if (res.ok) { log(res.skipped ? `Already downloaded: ${res.path}` : `Saved: ${res.path}`); }
+  if (res.ok) {
+    log(res.skipped ? `Already downloaded: ${res.path}` : `Saved: ${res.path}`);
+    if (!state.ratings[id]) state.ratings[id] = { rating: 0, plays: 0 };
+    state.ratings[id].plays = (state.ratings[id].plays || 0) + 1;
+    await api('/api/ratings', { method: 'POST', body: { id, rating: state.ratings[id].rating || 0, plays: state.ratings[id].plays } });
+    scrobbleTrack(t, 'submit');
+  }
   else log(`Download failed: ${res.error}`);
 }
 
@@ -298,6 +362,32 @@ async function scanNetwork() {
   log(`Network scan complete: ${res.results.length} host(s) found`);
 }
 
+async function showLyrics(id) {
+  const t = state.tracks.find((x) => getId(x) == id);
+  if (!t) return;
+  $('lyricsTitle').textContent = t['minm'] || 'Lyrics';
+  $('lyricsBody').textContent = 'Loading…';
+  $('lyricsModal').classList.remove('hidden');
+  const res = await api('/api/lyrics?artist=' + encodeURIComponent(t['asar'] || '') + '&title=' + encodeURIComponent(t['minm'] || ''));
+  $('lyricsBody').textContent = res.lyrics || 'No lyrics found.';
+}
+
+async function scrobbleTrack(t, type) {
+  const token = localStorage.getItem('lbToken') || '';
+  if (!token) return;
+  await api('/api/scrobble', {
+    method: 'POST',
+    body: {
+      service: 'listenbrainz',
+      token,
+      type,
+      artist: t['asar'] || '',
+      title: t['minm'] || '',
+      album: t['asal'] || ''
+    }
+  });
+}
+
 // events
 $('btnRefreshDiscover').addEventListener('click', refreshDiscover);
 $('btnScanNetwork').addEventListener('click', scanNetwork);
@@ -334,6 +424,29 @@ $('btnDeleteProfile').addEventListener('click', deleteProfile);
 
 $('btnAbout').addEventListener('click', () => $('aboutModal').classList.remove('hidden'));
 $('closeAbout').addEventListener('click', () => $('aboutModal').classList.add('hidden'));
+$('closeLyrics').addEventListener('click', () => $('lyricsModal').classList.add('hidden'));
+
+$('btnPlayRadio').addEventListener('click', () => {
+  const url = $('radioUrlInput').value.trim();
+  if (!url) return;
+  $('radioPlayer').src = url;
+  $('radioPlayer').play();
+  log('Playing radio: ' + url);
+});
+$('btnStopRadio').addEventListener('click', () => {
+  $('radioPlayer').pause();
+  $('radioPlayer').src = '';
+});
+$('btnSaveScrobble').addEventListener('click', () => {
+  localStorage.setItem('lbToken', $('lbTokenInput').value.trim());
+  log('Scrobble token saved');
+});
+$('btnTestScrobble').addEventListener('click', async () => {
+  const tok = $('lbTokenInput').value.trim();
+  localStorage.setItem('lbToken', tok);
+  const res = await api('/api/scrobble', { method: 'POST', body: { service: 'listenbrainz', token: tok, type: 'nowplaying', artist: 'Test', title: 'Test Track', album: 'Test Album' } });
+  $('scrobbleStatus').textContent = res.ok ? 'Scrobble OK' : ('Scrobble failed: ' + (res.error || res.status));
+});
 
 loadSettings();
 refreshDiscover();

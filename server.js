@@ -285,6 +285,102 @@ async function handleApi(req, res) {
     return sendJson(res, 200, { port, results, scanned: targets.length });
   }
 
+  if (p === '/api/ratings' && req.method === 'GET') {
+    const f = path.join(__dirname, 'data', 'ratings.json');
+    let data = {};
+    try { if (fs.existsSync(f)) data = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) {}
+    return sendJson(res, 200, { ratings: data });
+  }
+  if (p === '/api/ratings' && req.method === 'POST') {
+    const body = await readBody(req);
+    const f = path.join(__dirname, 'data', 'ratings.json');
+    let data = {};
+    try { if (fs.existsSync(f)) data = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) {}
+    if (body.id) data[body.id] = { rating: body.rating || 0, plays: body.plays || data[body.id]?.plays || 0, updated: Date.now() };
+    try { fs.writeFileSync(f, JSON.stringify(data, null, 2)); } catch (e) {}
+    return sendJson(res, 200, { ok: true, ratings: data });
+  }
+
+  if (p === '/api/lyrics' && req.method === 'GET') {
+    const q = parsed.searchParams;
+    const artist = q.get('artist') || '';
+    const title = q.get('title') || '';
+    const https = require('https');
+    const url = 'https://api.lyrics.ovh/v1/' + encodeURIComponent(artist) + '/' + encodeURIComponent(title);
+    https.get(url, (r) => {
+      const chunks = [];
+      r.on('data', (c) => chunks.push(c));
+      r.on('end', () => {
+        try {
+          const j = JSON.parse(Buffer.concat(chunks).toString());
+          sendJson(res, 200, { lyrics: j.lyrics || '' });
+        } catch (e) {
+          sendJson(res, 200, { lyrics: '' });
+        }
+      });
+    }).on('error', () => sendJson(res, 200, { lyrics: '' }));
+    return;
+  }
+
+  if (p === '/api/cover-search' && req.method === 'GET') {
+    const q = parsed.searchParams;
+    const artist = q.get('artist') || '';
+    const album = q.get('album') || '';
+    const https = require('https');
+    const url = 'https://itunes.apple.com/search?term=' + encodeURIComponent(artist + ' ' + album) + '&entity=album&limit=1';
+    https.get(url, (r) => {
+      const chunks = [];
+      r.on('data', (c) => chunks.push(c));
+      r.on('end', () => {
+        try {
+          const j = JSON.parse(Buffer.concat(chunks).toString());
+          const art = (j.results && j.results[0] && j.results[0].artworkUrl100) || '';
+          sendJson(res, 200, { artwork: art.replace('100x100', '600x600') });
+        } catch (e) {
+          sendJson(res, 200, { artwork: '' });
+        }
+      });
+    }).on('error', () => sendJson(res, 200, { artwork: '' }));
+    return;
+  }
+
+  if (p === '/api/scrobble' && req.method === 'POST') {
+    const body = await readBody(req);
+    const https = require('https');
+    if (body.service === 'listenbrainz' && body.token) {
+      const payload = JSON.stringify({
+        listen_type: body.type === 'nowplaying' ? 'playing_now' : 'single',
+        payload: [{
+          track_metadata: {
+            artist_name: body.artist || '',
+            track_name: body.title || '',
+            release_name: body.album || ''
+          }
+        }]
+      });
+      const reqOpts = {
+        hostname: 'api.listenbrainz.org',
+        path: '/1/submit-listens',
+        method: 'POST',
+        headers: {
+          'Authorization': 'Token ' + body.token,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload)
+        }
+      };
+      const r = https.request(reqOpts, (resp) => {
+        const chunks = [];
+        resp.on('data', (c) => chunks.push(c));
+        resp.on('end', () => sendJson(res, 200, { ok: resp.statusCode < 300, status: resp.statusCode, body: Buffer.concat(chunks).toString() }));
+      });
+      r.on('error', (e) => sendJson(res, 500, { ok: false, error: e.message }));
+      r.write(payload);
+      r.end();
+      return;
+    }
+    return sendJson(res, 400, { ok: false, error: 'unsupported service or missing token' });
+  }
+
   sendJson(res, 404, { error: 'not found' });
 }
 

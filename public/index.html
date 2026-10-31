@@ -58,8 +58,34 @@
         </section>
 
         <section class="card">
+          <h2>Smart Views</h2>
+          <ul id="smartViewList" class="list"></ul>
+        </section>
+
+        <section class="card">
           <h2>Playlists</h2>
           <ul id="playlistList" class="list"></ul>
+        </section>
+
+        <section class="card">
+          <h2>Radio / Podcasts</h2>
+          <input id="radioUrlInput" placeholder="Stream or M3U/PLS URL" />
+          <div class="row">
+            <button id="btnPlayRadio" class="primary small">Play</button>
+            <button id="btnStopRadio" class="ghost small">Stop</button>
+          </div>
+          <audio id="radioPlayer" controls style="width:100%;margin-top:8px"></audio>
+        </section>
+
+        <section class="card">
+          <h2>Scrobbling</h2>
+          <label>ListenBrainz token</label>
+          <input id="lbTokenInput" type="password" />
+          <div class="row">
+            <button id="btnSaveScrobble" class="ghost small">Save</button>
+            <button id="btnTestScrobble" class="ghost small">Test</button>
+          </div>
+          <div id="scrobbleStatus" class="status"></div>
         </section>
       </aside>
 
@@ -87,6 +113,7 @@
                 <th>Genre</th>
                 <th>Time</th>
                 <th>Size</th>
+                <th>Rating</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -110,6 +137,14 @@
       <h3>How this was created</h3>
       <p>This initial recreation was produced through reverse-engineering analysis of the original installer and application using <strong>REA (Reverse Engineering Anything)</strong>, followed by a clean-room modern reimplementation. Shout-out to the <strong>REA</strong> tooling and to <strong>Beam Free</strong> for assisting with the analysis and rebuild planning.</p>
       <p class="muted">DAAP authentication in iTunes 7+ / Home Sharing remains proprietary; this client supports standards-compatible and legacy shares where permitted.</p>
+    </div>
+  </div>
+
+  <div id="lyricsModal" class="modal hidden">
+    <div class="modal-card">
+      <button id="closeLyrics" class="close">×</button>
+      <h2 id="lyricsTitle">Lyrics</h2>
+      <pre id="lyricsBody" style="white-space:pre-wrap;max-height:60vh;overflow:auto"></pre>
     </div>
   </div>
 

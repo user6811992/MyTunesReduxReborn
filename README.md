@@ -12,13 +12,29 @@ to access, with a modern web-based GUI.
 ## Features
 - Manual connection to DAAP servers (host/port/password)
 - Best-effort Bonjour/mDNS discovery of `_daap._tcp` shares
+- Network subnet scanner for DAAP hosts
 - Browse server info, databases, playlists, and tracks
 - Search/filter tracks by title, artist, album, genre
-- Download selected or individual tracks
+- Download selected or individual tracks (skip existing)
+- Album art with fallback search
+- Ratings and play counts
+- Smart views (top rated, most played, unrated)
+- Lyrics lookup
+- Internet radio / podcast URL playback
+- ListenBrainz scrobbling (now playing + submit)
+- Connection profiles
 - Configurable download folder
 - Open downloaded files in the default app (optional iTunes COM hook on Windows)
-- Modern responsive web UI
+- Modern responsive web UI with dark/light themes
 - About page with dedication and credits
+
+## Roadmap
+- AirPlay / Chromecast output
+- DACP remote control
+- Podcast subscriptions and auto-download
+- Last.fm / Libre.fm scrobbling
+- ReplayGain normalization
+- Smart playlists with saved rules
 
 ## Limitations
 - iTunes 7+ / Home Sharing use proprietary authentication (`Client-DAAP-Validation`)
