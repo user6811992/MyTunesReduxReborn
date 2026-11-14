@@ -213,6 +213,21 @@
     </div>
   </div>
 
+  <div class="card" style="margin:16px">
+    <h2>Player</h2>
+    <audio id="player" controls x-webkit-airplay="allow" style="width:100%"></audio>
+    <div class="row">
+      <button id="btnCast" class="ghost small">Cast / AirPlay</button>
+      <label><input type="checkbox" id="rgToggle"> Apply ReplayGain</label>
+    </div>
+  </div>
+
+  <div class="card" style="margin:16px">
+    <h2>Podcasts</h2>
+    <label><input type="checkbox" id="podcastAutoDl"> Auto-download new episodes</label>
+    <button id="btnPodcastSyncDl" class="ghost small">Sync & Download</button>
+  </div>
+
   <script src="app.js"></script>
 </body>
 </html>

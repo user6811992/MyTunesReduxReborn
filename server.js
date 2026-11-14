@@ -571,6 +571,60 @@ async function handleApi(req, res) {
       sendJson(res, 500, { error: e.message });
     }
     return;
+  if (p === '/api/file' && req.method === 'GET') {
+    const filePath = parsed.searchParams.get('path');
+    if (!filePath) { res.writeHead(400); res.end(); return; }
+    const resolved = path.resolve(filePath);
+    const allowedRoots = [config.load().downloadDir, require('os').homedir()];
+    if (!allowedRoots.some((r) => resolved.toLowerCase().startsWith(path.resolve(r).toLowerCase()))) {
+      res.writeHead(403); res.end(); return;
+    }
+    if (!fs.existsSync(resolved)) { res.writeHead(404); res.end(); return; }
+    const stat = fs.statSync(resolved);
+    if (!stat.isFile()) { res.writeHead(404); res.end(); return; }
+    const ext = path.extname(resolved).toLowerCase();
+    const types = { '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.mp4': 'audio/mp4', '.flac': 'audio/flac', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.aac': 'audio/aac' };
+    res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream', 'Content-Length': stat.size });
+    fs.createReadStream(resolved).pipe(res);
+    return;
+  }
+
+  if (p === '/api/podcast-download' && req.method === 'POST') {
+    const body = await readBody(req);
+    const settings = config.load();
+    const dir = body.destDir || settings.downloadDir;
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const Parser = require('rss-parser');
+    const parser = new Parser();
+    const urls = body.urls || (body.url ? [body.url] : []);
+    const results = [];
+    for (const u of urls) {
+      try {
+        const feed = await parser.parseURL(u);
+        const ep = (feed.items || []).find((it) => it.enclosure && it.enclosure.url);
+        if (!ep) { results.push({ url: u, error: 'no enclosure' }); continue; }
+        const audioUrl = ep.enclosure.url;
+        const safeName = ((ep.title || 'episode').replace(/[<>:"/\\|?*]/g, '_')) + path.extname(new URL(audioUrl).pathname);
+        const dest = path.join(dir, safeName);
+        if (fs.existsSync(dest) && !body.overwrite) { results.push({ url: u, path: dest, skipped: true }); continue; }
+        const client = audioUrl.startsWith('https') ? require('https') : require('http');
+        await new Promise((resolve, reject) => {
+          client.get(audioUrl, (r) => {
+            if (r.statusCode !== 200) { r.resume(); return reject(new Error('HTTP ' + r.statusCode)); }
+            const out = fs.createWriteStream(dest);
+            r.pipe(out);
+            out.on('finish', resolve);
+            out.on('error', reject);
+            r.on('error', reject);
+          }).on('error', reject);
+        });
+        results.push({ url: u, path: dest, title: ep.title });
+      } catch (e) {
+        results.push({ url: u, error: e.message });
+      }
+    }
+    return sendJson(res, 200, { results });
+  }
   }
 
   if (p === '/api/scrobble-librefm' && req.method === 'POST') {

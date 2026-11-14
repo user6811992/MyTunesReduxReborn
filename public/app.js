@@ -690,3 +690,75 @@ $('btnTestScrobble').addEventListener('click', async () => {
 loadSettings();
 refreshDiscover();
 setInterval(refreshDiscover, 8000);
+// --- Player / ReplayGain / Cast / Podcast auto-download ---
+const player = player;
+let audioCtx = null;
+let gainNode = null;
+let mediaSourceNode = null;
+
+function ensureAudioGraph() {
+  if (audioCtx) return;
+  try {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    mediaSourceNode = audioCtx.createMediaElementSource(player);
+    gainNode = audioCtx.createGain();
+    mediaSourceNode.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+  } catch (e) { console.warn('Web Audio unavailable', e); }
+}
+
+async function playFile(path) {
+  const url = '/api/file?path=' + encodeURIComponent(path);
+  player.src = url;
+  player.load();
+  try { await player.play(); } catch (e) { log('Play failed: ' + e.message); }
+  if (rgToggle && rgToggle.checked) applyReplayGain(path);
+}
+
+async function applyReplayGain(path) {
+  ensureAudioGraph();
+  if (!gainNode) return;
+  try {
+    const res = await api('/api/replaygain?path=' + encodeURIComponent(path));
+    const rg = res.replayGain;
+    let db = 0;
+    if (rg) {
+      if (typeof rg === 'object') db = parseFloat(rg.gain || rg.trackGain || 0);
+      else db = parseFloat(rg);
+    }
+    const gain = Math.pow(10, (isNaN(db) ? 0 : db) / 20);
+    gainNode.gain.value = gain || 1;
+    log('ReplayGain applied: ' + (isNaN(db) ? 0 : db) + ' dB');
+  } catch (e) { log('ReplayGain error: ' + e.message); }
+}
+
+const btnCast = btnCast;
+if (btnCast) btnCast.addEventListener('click', async () => {
+  if (player.remote && typeof player.remote.prompt === 'function') {
+    try { await player.remote.prompt(); log('Remote playback prompt opened'); }
+    catch (e) { log('Cast prompt failed: ' + e.message); }
+  } else if (player.webkitShowPlaybackTargetPicker) {
+    player.webkitShowPlaybackTargetPicker();
+  } else {
+    log('Remote playback not supported in this browser');
+  }
+});
+
+const btnPodcastSyncDl = btnPodcastSyncDl;
+if (btnPodcastSyncDl) btnPodcastSyncDl.addEventListener('click', async () => {
+  const res = await api('/api/podcast-sync');
+  const urls = (res.results || []).map(() => null).filter(Boolean);
+  // download latest episode of each subscription by re-fetching list
+  const subs = (await api('/api/podcasts')).items || [];
+  const feedUrls = subs.map((s) => s.url);
+  const dl = await api('/api/podcast-download', { method: 'POST', body: { urls: feedUrls } });
+  (dl.results || []).forEach((r) => log(r.error ? ('Podcast dl failed: ' + r.error) : ('Podcast downloaded: ' + (r.title || r.path))));
+});
+
+// auto-download toggle persistence
+const podcastAutoDl = podcastAutoDl;
+if (podcastAutoDl) {
+  podcastAutoDl.addEventListener('change', async () => {
+    await api('/api/settings', { method: 'POST', body: { podcastAutoDownload: podcastAutoDl.checked } });
+  });
+}
