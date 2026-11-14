@@ -193,12 +193,16 @@ async function handleApi(req, res) {
     const body = await readBody(req);
     if (!body.path) return sendJson(res, 400, { ok: false, error: 'path required' });
     const { exec } = require('child_process');
-    const cmd = process.platform === 'win32' ? `start "" "${body.path}"` : `open "${body.path}"`;
+    let cmd;
+    if (process.platform === 'win32') cmd = `start "" "${body.path}"`;
+    else if (process.platform === 'darwin') cmd = `open "${body.path}"`;
+    else cmd = `xdg-open "${body.path}"`;
     exec(cmd, () => {});
     return sendJson(res, 200, { ok: true });
   }
 
   if (p === '/api/open-itunes' && req.method === 'POST') {
+    if (process.platform !== 'win32') return sendJson(res, 400, { ok: false, error: 'iTunes COM hook is Windows-only' });
     const body = await readBody(req);
     const { exec } = require('child_process');
     const ps = `powershell -NoProfile -Command "try { $it = New-Object -ComObject iTunes.Application; $it.PlayFile('${(body.path || '').replace(/'/g, "''")}'); } catch { Write-Host $_ }"`;
@@ -209,7 +213,7 @@ async function handleApi(req, res) {
   if (p === '/api/about' && req.method === 'GET') {
     return sendJson(res, 200, {
       name: 'MyTunes Redux Reborn',
-      version: '2.3.0',
+      version: '2.3.1',
       codename: 'Horizon',
       description: 'A modern, legitimate reimagining of myTunes Redux for browsing/downloading from DAAP-compatible shares you are authorized to access.'
     });
@@ -328,18 +332,13 @@ async function handleApi(req, res) {
   }
 
   if (p === '/api/ratings' && req.method === 'GET') {
-    const f = path.join(__dirname, 'data', 'ratings.json');
-    let data = {};
-    try { if (fs.existsSync(f)) data = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) {}
-    return sendJson(res, 200, { ratings: data });
+    return sendJson(res, 200, { ratings: config.loadRatings() });
   }
   if (p === '/api/ratings' && req.method === 'POST') {
     const body = await readBody(req);
-    const f = path.join(__dirname, 'data', 'ratings.json');
-    let data = {};
-    try { if (fs.existsSync(f)) data = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) {}
+    const data = config.loadRatings();
     if (body.id) data[body.id] = { rating: body.rating || 0, plays: body.plays || data[body.id]?.plays || 0, updated: Date.now() };
-    try { fs.writeFileSync(f, JSON.stringify(data, null, 2)); } catch (e) {}
+    config.saveRatings(data);
     return sendJson(res, 200, { ok: true, ratings: data });
   }
 
@@ -448,31 +447,21 @@ async function handleApi(req, res) {
 
   if (p === '/api/podcast' && req.method === 'POST') {
     const body = await readBody(req);
-    const https = require('https');
-    const http = require('http');
-    const client = body.url && body.url.startsWith('https') ? https : http;
-    client.get(body.url, (r) => {
-      const chunks = [];
-      r.on('data', (c) => chunks.push(c));
-      r.on('end', () => {
-        const xml = Buffer.concat(chunks).toString('utf8');
-        const episodes = [];
-        const itemRe = /<item>([\s\S]*?)<\/item>/g;
-        let m;
-        while ((m = itemRe.exec(xml)) !== null) {
-          const block = m[1];
-          const title = (block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/) || [])[1] || 'Episode';
-          const url = (block.match(/<enclosure[^>]*url="([^"]+)"/) || [])[1] || '';
-          const pubDate = (block.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1] || '';
-          if (url) episodes.push({ title: title.trim(), url, pubDate });
-        }
-        const feedTitle = (xml.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/) || [])[1] || 'Podcast';
-        sendJson(res, 200, { title: feedTitle.trim(), episodes });
-      });
-    }).on('error', (e) => sendJson(res, 500, { error: e.message }));
+    try {
+      const Parser = require('rss-parser');
+      const parser = new Parser();
+      const feed = await parser.parseURL(body.url);
+      const episodes = (feed.items || []).map((it) => ({
+        title: (it.title || 'Episode').trim(),
+        url: it.enclosure && it.enclosure.url ? it.enclosure.url : (it.link || ''),
+        pubDate: it.pubDate || it.isoDate || ''
+      })).filter((e) => e.url);
+      sendJson(res, 200, { title: (feed.title || 'Podcast').trim(), episodes });
+    } catch (e) {
+      sendJson(res, 500, { error: e.message });
+    }
     return;
   }
-
   if (p === '/api/scrobble-lastfm' && req.method === 'POST') {
     const body = await readBody(req);
     const crypto = require('crypto');
@@ -553,32 +542,21 @@ async function handleApi(req, res) {
     const s = config.load();
     const subs = s.podcastSubscriptions || [];
     const results = [];
+    const Parser = require('rss-parser');
+    const parser = new Parser();
     for (const sub of subs) {
       try {
-        const https = require('https'); const http = require('http');
-        const client = sub.url.startsWith('https') ? https : http;
-        const xml = await new Promise((resolve, reject) => {
-          client.get(sub.url, (r) => {
-            const chunks = [];
-            r.on('data', (c) => chunks.push(c));
-            r.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-          }).on('error', reject);
-        });
-        const itemRe = /<item>([\s\S]*?)<\/item>/g;
-        let m; const episodes = [];
-        while ((m = itemRe.exec(xml)) !== null) {
-          const block = m[1];
-          const title = (block.match(/<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?<\/title>/) || [])[1] || 'Episode';
-          const url = (block.match(/<enclosure[^>]*url="([^"]+)"/) || [])[1] || '';
-          if (url) episodes.push({ title: title.trim(), url });
-        }
-        results.push({ title: sub.title, episodes: episodes.slice(0, 5) });
+        const feed = await parser.parseURL(sub.url);
+        const episodes = (feed.items || []).map((it) => ({
+          title: (it.title || 'Episode').trim(),
+          url: it.enclosure && it.enclosure.url ? it.enclosure.url : (it.link || '')
+        })).filter((e) => e.url).slice(0, 5);
+        results.push({ title: sub.title || feed.title, episodes });
       } catch (e) {
         results.push({ title: sub.title, error: e.message });
       }
     }
     return sendJson(res, 200, { results });
-  }
 
   if (p === '/api/replaygain' && req.method === 'GET') {
     const q = parsed.searchParams;
@@ -639,19 +617,35 @@ const server = http.createServer((req, res) => {
   else serveStatic(req, res);
 });
 
-server.listen(PORT, () => {
+server.on('error', (e) => {
+  if (e.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Is MyTunes Redux Reborn already running?`);
+  } else {
+    console.error('Server error:', e);
+  }
+  // keep process alive briefly so the message is visible
+  setTimeout(() => process.exit(1), 1000);
+});
+
+server.listen(PORT, '127.0.0.1', () => {
   console.log(`MyTunes Redux Reborn running at http://localhost:${PORT}`);
   const { exec } = require('child_process');
   const settings = (function(){ try { return config.load(); } catch(e){ return {}; } })();
   const mode = settings.browserMode || 'edge';
   const edge = 'C:\\\\Program Files (x86)\\\\Microsoft\\\\Edge\\\\Application\\\\msedge.exe';
   let cmd;
-  if (mode === 'default' || !require('fs').existsSync(edge)) {
-    cmd = process.platform === 'win32' ? `start http://localhost:${PORT}` : `open http://localhost:${PORT}`;
-  } else {
+  if (process.platform === 'win32' && mode !== 'default' && require('fs').existsSync(edge)) {
     cmd = `start "" "${edge}" --app=http://localhost:${PORT} --window-size=1280,800`;
+  } else if (process.platform === 'win32') {
+    cmd = `start http://localhost:${PORT}`;
+  } else if (process.platform === 'darwin') {
+    cmd = `open http://localhost:${PORT}`;
+  } else {
+    cmd = `xdg-open http://localhost:${PORT}`;
   }
   setTimeout(() => exec(cmd, () => {}), 800);
 });
 
 process.on('SIGINT', () => { try { browser.close(); } catch (e) {} try { airplayBrowser.close(); } catch (e) {} try { chromecastBrowser.close(); } catch (e) {} process.exit(0); });
+
+}

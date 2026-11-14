@@ -1,11 +1,13 @@
 {
   "name": "mytunes-redux-reborn",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "A modern, legitimate reimagining of myTunes Redux for browsing and downloading from DAAP-compatible music shares.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "build:sea": "esbuild server.js --bundle --platform=node --target=node20 --outfile=sea-main.js && node --experimental-sea-config sea-config.json",
+    "gen:sea-config": "node tools/gen-sea-config.js"
   },
   "engines": {
     "node": ">=18"

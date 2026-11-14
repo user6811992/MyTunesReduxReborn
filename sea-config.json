@@ -1,0 +1,10 @@
+{
+  "main": "sea-main.js",
+  "output": "sea-prep.blob",
+  "disableExperimentalSEAWarning": true,
+  "assets": {
+    "public/app.js": "public\\app.js",
+    "public/index.html": "public\\index.html",
+    "public/styles.css": "public\\styles.css"
+  }
+}

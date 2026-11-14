@@ -4,5 +4,4 @@ data/settings.json
 # build artifacts
 sea-main.js
 sea-prep.blob
-sea-config.json
 *.exe
