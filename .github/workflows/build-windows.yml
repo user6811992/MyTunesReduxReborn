@@ -1,0 +1,30 @@
+name: Build Windows
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm test
+      - name: Build SEA
+        run: npm run build:sea
+      - name: Copy exe
+        run: Copy-Item node.exe MyTunesReduxReborn.exe 2>$null; if (-not (Test-Path MyTunesReduxReborn.exe)) { Copy-Item "C:\Program Files\nodejs\node.exe" MyTunesReduxReborn.exe }
+      - name: Inject SEA blob
+        run: npx postject MyTunesReduxReborn.exe NODE_SEA_BLOB sea-prep.blob --sentinel-fuse NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2
+      - uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+        with:
+          path: installer/MyTunesReduxReborn.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: dist/*.exe
