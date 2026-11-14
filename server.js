@@ -1,3 +1,8 @@
+// MyTunes Redux Reborn
+// Copyright (c) 2026 MyTunes Redux Reborn Contributors
+// SPDX-License-Identifier: MIT
+// See LICENSE file in the repository root.
+
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
